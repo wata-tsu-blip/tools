@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スマート割り勘 - 個別割り勘＆最適送金ルート計算</title>
+    
+    <!-- Tailwind CSS (Play CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM (UMD Production builds) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel (ブラウザ上でのJSXコンパイル用) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* カスタムのスクロールバーデザイン */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+    <!-- React アプリケーションのマウント先 -->
+    <div id="root"></div>
+
+    <!-- React/JSX アプリケーションコード -->
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+
+        // --- カスタム SVG アイコン（Lucideの代わりに軽量・オフライン対応のSVGを内蔵） ---
+        const IconUsers = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+        );
+
+        const IconPlusCircle = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        );
+
+        const IconTrash2 = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+        );
+
+        const IconFileText = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+        );
+
+        const IconCheck = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+        );
+
+        const IconCopy = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+            </svg>
+        );
+
+        const IconRefreshCw = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.283 8H18" />
+            </svg>
+        );
+
+        const IconArrowRight = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+        );
+
+        const IconInfo = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+        );
+
+        const IconCheckSquare = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
+            </svg>
+        );
+
+        const IconSquare = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+            </svg>
+        );
+
+        const IconSparkles = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+            </svg>
+        );
+
+        const IconAward = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+            </svg>
+        );
+
+        const IconUserPlus = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+        );
+
+        const IconEdit2 = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+        );
+
+        const IconX = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        );
+
+        const IconDownload = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+        );
+
+        const IconUpload = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+        );
+
+        const IconSave = ({ className = "h-5 w-5" }) => (
+            <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V8l-4-4H8zm4 12a3 3 0 100-6 3 3 0 000 6z" />
+            </svg>
+        );
+
+
+        // --- メイン App コンポーネント ---
+        function App() {
+            // メンバーリスト
+            const [members, setMembers] = useState([
+                { id: '1', name: '佐藤' },
+                { id: '2', name: '鈴木' },
+                { id: '3', name: '田中' },
+                { id: '4', name: '渡辺' },
+            ]);
+            const [newMemberName, setNewMemberName] = useState('');
+            const [editingMemberId, setEditingMemberId] = useState(null);
+            const [editingMemberName, setEditingMemberName] = useState('');
+
+            // 支出リスト
+            const [expenses, setExpenses] = useState([
+                {
+                    id: 'e1',
+                    title: 'コテージ宿泊代',
+                    amount: 40000,
+                    payerId: '1',
+                    participants: ['1', '2', '3', '4'],
+                },
+                {
+                    id: 'e2',
+                    title: 'BBQ食材・お酒',
+                    amount: 15000,
+                    payerId: '2',
+                    participants: ['1', '2', '3', '4'],
+                },
+                {
+                    id: 'e3',
+                    title: 'レンタカー・ガソリン代',
+                    amount: 9000,
+                    payerId: '3',
+                    participants: ['1', '2', '3'],
+                }
+            ]);
+
+            // 新規・編集支出フォームの一時ステータス
+            const [expenseTitle, setExpenseTitle] = useState('');
+            const [expenseAmount, setExpenseAmount] = useState('');
+            const [expensePayerId, setExpensePayerId] = useState('1');
+            const [expenseParticipants, setExpenseParticipants] = useState(['1', '2', '3', '4']);
+            const [isSelectAllParticipants, setIsSelectAllParticipants] = useState(true);
+            
+            // 編集中の支出ID (nullの場合は新規追加モード)
+            const [editingExpenseId, setEditingExpenseId] = useState(null);
+
+            // インポート・エクスポート用モーダルとテキスト
+            const [showBackupModal, setShowBackupModal] = useState(false);
+            const [backupText, setBackupText] = useState('');
+            const [importText, setImportText] = useState('');
+
+            // 通知・メッセージ
+            const [copied, setCopied] = useState(false);
+            const [backupCopied, setBackupCopied] = useState(false);
+            const [errorMessage, setErrorMessage] = useState('');
+            const [successMessage, setSuccessMessage] = useState('');
+
+            // メンバー追加処理
+            const handleAddMember = (e) => {
+                if (e) e.preventDefault();
+                const name = newMemberName.trim();
+                if (!name) return;
+                
+                if (members.length >= 100) {
+                    showError('メンバーは最大100人まで登録できます。');
+                    return;
+                }
+
+                if (members.some(m => m.name === name)) {
+                    showError('すでに同じ名前のメンバーが登録されています。');
+                    return;
+                }
+
+                const newId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9);
+                const newMember = { id: newId, name };
+                
+                setMembers([...members, newMember]);
+                setNewMemberName('');
+                setExpenseParticipants(prev => [...prev, newId]);
+            };
+
+            // メンバー名の編集開始
+            const startEditMember = (member) => {
+                setEditingMemberId(member.id);
+                setEditingMemberName(member.name);
+            };
+
+            // メンバー名変更保存
+            const saveMemberName = (id) => {
+                const name = editingMemberName.trim();
+                if (!name) {
+                    setEditingMemberId(null);
+                    return;
+                }
+                if (members.some(m => m.name === name && m.id !== id)) {
+                    showError('すでに同じ名前のメンバーが登録されています。');
+                    return;
+                }
+
+                setMembers(members.map(m => m.id === id ? { ...m, name } : m));
+                setEditingMemberId(null);
+            };
+
+            // メンバー削除
+            const handleRemoveMember = (id) => {
+                const updatedMembers = members.filter(m => m.id !== id);
+                setMembers(updatedMembers);
+                
+                const fallbackPayerId = updatedMembers[0]?.id || '';
+                
+                setExpenses(expenses.map(exp => {
+                    let updatedExp = { ...exp };
+                    if (exp.payerId === id) {
+                        updatedExp.payerId = fallbackPayerId;
+                    }
+                    updatedExp.participants = exp.participants.filter(pId => pId !== id);
+                    return updatedExp;
+                }).filter(exp => exp.participants.length > 0 && exp.payerId !== ''));
+
+                if (expensePayerId === id) {
+                    setExpensePayerId(fallbackPayerId);
+                }
+                setExpenseParticipants(expenseParticipants.filter(pId => pId !== id));
+            };
+
+            // 支出の編集モード切り替え
+            const startEditExpense = (expense) => {
+                setEditingExpenseId(expense.id);
+                setExpenseTitle(expense.title);
+                setExpenseAmount(expense.amount.toString());
+                setExpensePayerId(expense.payerId);
+                setExpenseParticipants([...expense.participants]);
+                setIsSelectAllParticipants(expense.participants.length === members.length);
+                
+                const formElement = document.getElementById('expense-form-section');
+                if (formElement) {
+                    formElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            };
+
+            // 編集キャンセルの処理
+            const cancelEditExpense = () => {
+                setEditingExpenseId(null);
+                setExpenseTitle('');
+                setExpenseAmount('');
+                setExpensePayerId(members[0]?.id || '');
+                setExpenseParticipants(members.map(m => m.id));
+                setIsSelectAllParticipants(true);
+            };
+
+            // 支出追加・更新の処理
+            const handleSaveExpense = (e) => {
+                e.preventDefault();
+
+                if (members.length < 2) {
+                    showError('支出を追加するには、まずメンバーを2人以上登録してください。');
+                    return;
+                }
+
+                const title = expenseTitle.trim() || '共同の支出';
+                const amount = parseFloat(expenseAmount);
+
+                if (isNaN(amount) || amount <= 0) {
+                    showError('有効な金額を入力してください。');
+                    return;
+                }
+
+                if (!expensePayerId) {
+                    showError('支払った人を選択してください。');
+                    return;
+                }
+
+                if (expenseParticipants.length === 0) {
+                    showError('支払いを負担する対象者を1人以上選択してください。');
+                    return;
+                }
+
+                if (editingExpenseId) {
+                    setExpenses(expenses.map(exp => 
+                        exp.id === editingExpenseId 
+                            ? { ...exp, title, amount, payerId: expensePayerId, participants: [...expenseParticipants] }
+                            : exp
+                    ));
+                    showSuccess('支出情報を更新しました！');
+                    setEditingExpenseId(null);
+                } else {
+                    const newId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9);
+                    const newExpense = {
+                        id: newId,
+                        title,
+                        amount,
+                        payerId: expensePayerId,
+                        participants: [...expenseParticipants]
+                      };
+                    setExpenses([...expenses, newExpense]);
+                    showSuccess('支出を追加しました！');
+                }
+                
+                setExpenseTitle('');
+                setExpenseAmount('');
+                setExpenseParticipants(members.map(m => m.id));
+                setIsSelectAllParticipants(true);
+            };
+
+            // 支出の削除
+            const handleRemoveExpense = (id) => {
+                if (editingExpenseId === id) {
+                    cancelEditExpense();
+                }
+                setExpenses(expenses.filter(exp => exp.id !== id));
+            };
+
+            // 参加者チェックの切り替え
+            const toggleParticipant = (memberId) => {
+                if (expenseParticipants.includes(memberId)) {
+                    const updated = expenseParticipants.filter(id => id !== memberId);
+                    setExpenseParticipants(updated);
+                    setIsSelectAllParticipants(updated.length === members.length);
+                } else {
+                    const updated = [...expenseParticipants, memberId];
+                    setExpenseParticipants(updated);
+                    setIsSelectAllParticipants(updated.length === members.length);
+                }
+            };
+
+            // 全員選択・解除の切り替え
+            const toggleSelectAllParticipants = () => {
+                if (isSelectAllParticipants) {
+                    setExpenseParticipants([]);
+                    setIsSelectAllParticipants(false);
+                } else {
+                    setExpenseParticipants(members.map(m => m.id));
+                    setIsSelectAllParticipants(true);
+                }
+            };
+
+            // デモデータの読み込み
+            const loadDemoData = () => {
+                setEditingExpenseId(null);
+                setMembers([
+                    { id: '1', name: '佐藤' },
+                    { id: '2', name: '鈴木' },
+                    { id: '3', name: '田中' },
+                    { id: '4', name: '渡辺' },
+                    { id: '5', name: '伊藤' },
+                ]);
+                setExpenses([
+                    { id: 'e1', title: 'グランピング宿泊代', amount: 65000, payerId: '1', participants: ['1', '2', '3', '4', '5'] },
+                    { id: 'e2', title: 'バーベキュー高級肉・食材', amount: 18000, payerId: '2', participants: ['1', '2', '3', '4', '5'] },
+                    { id: 'e3', title: '地酒・ワイン（お酒飲む人限定）', amount: 8000, payerId: '3', participants: ['1', '2', '3'] },
+                    { id: 'e4', title: 'レンタカー＆ガソリン往復', amount: 12000, payerId: '4', participants: ['1', '2', '4', '5'] },
+                    { id: 'e5', title: '翌朝の淹れ立てコーヒー代', amount: 2500, payerId: '5', participants: ['1', '3', '5'] }
+                ]);
+                setExpensePayerId('1');
+                setExpenseParticipants(['1', '2', '3', '4', '5']);
+                setIsSelectAllParticipants(true);
+                showSuccess('デモデータを読み込みました。');
+            };
+
+            // データをすべてクリア（0名リセット）
+            const clearAllData = () => {
+                setEditingExpenseId(null);
+                setMembers([]);
+                setExpenses([]);
+                setExpensePayerId('');
+                setExpenseParticipants([]);
+                setIsSelectAllParticipants(false);
+                showSuccess('データを完全にリセットしました。');
+            };
+
+            // エラー表示
+            const showError = (msg) => {
+                setErrorMessage(msg);
+                setTimeout(() => setErrorMessage(''), 4000);
+            };
+
+            // 成功トースト表示
+            const showSuccess = (msg) => {
+                setSuccessMessage(msg);
+                setTimeout(() => setSuccessMessage(''), 3000);
+            };
+
+            // エクスポート（バックアップ）作成
+            const handleOpenBackupModal = () => {
+                const dataToBackup = {
+                    v: '1.0',
+                    members,
+                    expenses
+                };
+                // 日本語を崩さずにbase64に安全エンコード
+                const stringified = btoa(unescape(encodeURIComponent(JSON.stringify(dataToBackup))));
+                setBackupText(stringified);
+                setImportText('');
+                setShowBackupModal(true);
+            };
+
+            // インポート実行
+            const handleImportData = () => {
+                if (!importText.trim()) {
+                    showError('インポートする文字列を入力してください。');
+                    return;
+                }
+                try {
+                    const decoded = decodeURIComponent(escape(atob(importText.trim())));
+                    const parsed = JSON.parse(decoded);
+                    
+                    if (parsed && Array.isArray(parsed.members)) {
+                        setMembers(parsed.members);
+                        setExpenses(parsed.expenses || []);
+                        setEditingExpenseId(null);
+                        setShowBackupModal(false);
+                        showSuccess('過去の割り勘データを復元しました！');
+                    } else {
+                        showError('データ形式が正しくありません。');
+                    }
+                } catch (e) {
+                    showError('データの解析に失敗しました。正しい復元用コードを貼り付けてください。');
+                }
+            };
+
+            // クリップボードにバックアップをコピー
+            const copyBackupToClipboard = () => {
+                const tempTextArea = document.createElement('textarea');
+                tempTextArea.value = backupText;
+                document.body.appendChild(tempTextArea);
+                tempTextArea.select();
+                try {
+                    document.execCommand('copy');
+                    setBackupCopied(true);
+                    setTimeout(() => setBackupCopied(false), 3000);
+                } catch (err) {
+                    console.error('コピー失敗', err);
+                }
+                document.body.removeChild(tempTextArea);
+            };
+
+            // メンバー増減時のサイドエフェクト
+            useEffect(() => {
+                if (members.length > 0) {
+                    if (!expensePayerId || !members.some(m => m.id === expensePayerId)) {
+                        setExpensePayerId(members[0].id);
+                    }
+                } else {
+                    setExpensePayerId('');
+                }
+            }, [members, expensePayerId]);
+
+            // --- 計算コアエンジン ---
+            const calculations = useMemo(() => {
+                if (members.length < 2) {
+                    return {
+                        memberBalances: [],
+                        totalExpense: 0,
+                        transactions: [],
+                    };
+                }
+
+                const paidAmounts = {};
+                const shareAmounts = {};
+                
+                members.forEach(m => {
+                    paidAmounts[m.id] = 0;
+                    shareAmounts[m.id] = 0;
+                });
+
+                expenses.forEach(exp => {
+                    const amount = parseFloat(exp.amount) || 0;
+                    if (paidAmounts[exp.payerId] !== undefined) {
+                        paidAmounts[exp.payerId] += amount;
+                    }
+
+                    if (exp.participants && exp.participants.length > 0) {
+                        const share = amount / exp.participants.length;
+                        exp.participants.forEach(pId => {
+                            if (shareAmounts[pId] !== undefined) {
+                                shareAmounts[pId] += share;
+                            }
+                        });
+                    }
+                });
+
+                const balances = {};
+                const memberBalances = members.map(m => {
+                    const paid = paidAmounts[m.id] || 0;
+                    const share = shareAmounts[m.id] || 0;
+                    const balance = paid - share;
+                    balances[m.id] = balance;
+                    return {
+                        id: m.id,
+                        name: m.name,
+                        paid,
+                        share,
+                        balance: Math.round(balance)
+                    };
+                });
+
+                const totalExpense = expenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
+
+                const debtors = [];
+                const creditors = [];
+
+                memberBalances.forEach(mb => {
+                    if (mb.balance < 0) {
+                        debtors.push({ id: mb.id, name: mb.name, amount: -mb.balance });
+                    } else if (mb.balance > 0) {
+                        creditors.push({ id: mb.id, name: mb.name, amount: mb.balance });
+                    }
+                });
+
+                debtors.sort((a, b) => b.amount - a.amount);
+                creditors.sort((a, b) => b.amount - a.amount);
+
+                const transactions = [];
+                let dIdx = 0;
+                let cIdx = 0;
+
+                const tempDebtors = debtors.map(d => ({ ...d }));
+                const tempCreditors = creditors.map(c => ({ ...c }));
+
+                while (dIdx < tempDebtors.length && cIdx < tempCreditors.length) {
+                    const debtor = tempDebtors[dIdx];
+                    const creditor = tempCreditors[cIdx];
+
+                    const amount = Math.min(debtor.amount, creditor.amount);
+                    
+                    if (amount > 0) {
+                        transactions.push({
+                            from: debtor.name,
+                            fromId: debtor.id,
+                            to: creditor.name,
+                            toId: creditor.id,
+                            amount: Math.round(amount)
+                        });
+                    }
+
+                    debtor.amount -= amount;
+                    creditor.amount -= amount;
+
+                    if (debtor.amount < 0.5) dIdx++;
+                    if (creditor.amount < 0.5) cIdx++;
+                }
+
+                return {
+                    memberBalances,
+                    totalExpense,
+                    transactions,
+                };
+            }, [members, expenses]);
+
+            // 結果共有のためのテキストコピー処理
+            const copyResultsToClipboard = () => {
+                let text = `【割り勘・清算結果の共有】\n`;
+                text += `総計: ${calculations.totalExpense.toLocaleString()} 円\n`;
+                text += `メンバー数: ${members.length} 人\n\n`;
+
+                text += `◆ 各自の支払い状況:\n`;
+                calculations.memberBalances.forEach(mb => {
+                    const statusText = mb.balance > 0 
+                        ? `【＋】受け取り: ${mb.balance.toLocaleString()}円` 
+                        : mb.balance < 0 
+                            ? `【－】追加支払い: ${Math.abs(mb.balance).toLocaleString()}円` 
+                            : `【±０】清算なし`;
+                    text += `- ${mb.name}: 支払済 ${mb.paid.toLocaleString()}円 (負担額 ${Math.round(mb.share).toLocaleString()}円) ➔ ${statusText}\n`;
+                });
+
+                text += `\n◆ 精算方法（おすすめの送金手順）:\n`;
+                if (calculations.transactions.length === 0) {
+                    text += `全員清算済みです。送金の必要はありません！\n`;
+                } else {
+                    calculations.transactions.forEach((t, i) => {
+                        text += `${i + 1}. ${t.from} さん ➔ ${t.to} さん へ 【 ${t.amount.toLocaleString()} 円 】を支払う\n`;
+                    });
+                }
+                
+                text += `\nGenerated by 割り勘スマート清算ツール`;
+
+                const tempTextArea = document.createElement('textarea');
+                tempTextArea.value = text;
+                document.body.appendChild(tempTextArea);
+                tempTextArea.select();
+                try {
+                    document.execCommand('copy');
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 3000);
+                } catch (err) {
+                    console.error('コピー失敗', err);
+                }
+                document.body.removeChild(tempTextArea);
+            };
+
+            return (
+                <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-16">
+                    {/* ヘッダー */}
+                    <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-700 text-white shadow-md">
+                        <div className="max-w-6xl mx-auto px-4 py-6 md:py-8 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-white/20 p-2.5 rounded-xl backdrop-blur-sm">
+                                    <IconUsers className="h-8 w-8 text-white" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">スマート割り勘</h1>
+                                    <p className="text-indigo-100 text-xs md:text-sm mt-0.5">個別割り勘・いつでもやり直せる微調整機能搭載</p>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 flex-wrap justify-center">
+                                <button
+                                    onClick={handleOpenBackupModal}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold rounded-lg shadow-sm transition"
+                                    title="データを保存、または復元します"
+                                >
+                                    <IconDownload className="h-4 w-4" />
+                                    データの保存・復元
+                                </button>
+                                <button
+                                    onClick={loadDemoData}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-500 hover:bg-yellow-400 text-slate-900 text-xs font-bold rounded-lg shadow-sm transition"
+                                >
+                                    <IconSparkles className="h-4 w-4" />
+                                    デモ
+                                </button>
+                                <button
+                                    onClick={clearAllData}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow-sm transition"
+                                >
+                                    <IconRefreshCw className="h-4 w-4" />
+                                    クリア
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* エラーアラート */}
+                    {errorMessage && (
+                        <div className="fixed top-4 right-4 z-50 bg-red-50 border-l-4 border-red-500 p-4 rounded shadow-lg flex items-start gap-3 animate-bounce max-w-sm">
+                            <div className="bg-red-500 text-white p-1 rounded-full text-xs shrink-0">✕</div>
+                            <div>
+                                <p className="text-sm font-semibold text-red-800">{errorMessage}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 成功トースト */}
+                    {successMessage && (
+                        <div className="fixed top-4 right-4 z-50 bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded shadow-lg flex items-start gap-3 max-w-sm">
+                            <div className="bg-emerald-500 text-white p-1 rounded-full text-xs shrink-0">✓</div>
+                            <div>
+                                <p className="text-sm font-semibold text-emerald-800">{successMessage}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* インポート・エクスポートモーダル */}
+                    {showBackupModal && (
+                        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-100">
+                                <div className="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                                    <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                        <IconRefreshCw className="h-5 w-5 text-indigo-600" />
+                                        データの保存と復元（微調整用）
+                                    </h3>
+                                    <button 
+                                        onClick={() => setShowBackupModal(false)}
+                                        className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                                    >
+                                        <IconX className="h-5 w-5" />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-5">
+                                    {/* 保存（書き出し） */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                            現在の割り勘データを保存する（書き出しコード）
+                                        </label>
+                                        <p className="text-xs text-slate-400 mb-2">
+                                            このテキストをコピーしてメモ帳やLINE等に保存しておけば、次回貼り付けるだけで完全に復元できます。
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                readOnly 
+                                                value={backupText}
+                                                onClick={(e) => e.target.select()}
+                                                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none"
+                                            />
+                                            <button
+                                                onClick={copyBackupToClipboard}
+                                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0"
+                                            >
+                                                {backupCopied ? <IconCheck className="h-3.5 w-3.5" /> : <IconCopy className="h-3.5 w-3.5" />}
+                                                {backupCopied ? 'コピー済' : 'コピー'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 復元（読み込み） */}
+                                    <div className="border-t border-slate-100 pt-4">
+                                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                            過去のデータから微調整する（復元用コードの読み込み）
+                                        </label>
+                                        <textarea
+                                            placeholder="保存したコードをここに貼り付けてください"
+                                            value={importText}
+                                            onChange={(e) => setImportText(e.target.value)}
+                                            className="w-full h-24 px-3 py-2 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                        <button
+                                            onClick={handleImportData}
+                                            className="w-full mt-2 bg-slate-900 hover:bg-slate-800 text-white py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
+                                        >
+                                            <IconUpload className="h-3.5 w-3.5" />
+                                            データを復元して微調整を開始
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <main className="max-w-6xl mx-auto px-4 mt-6 md:mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
+                        
+                        {/* 左側：入力エリア */}
+                        <div className="lg:col-span-7 flex flex-col gap-6 md:gap-8">
+                            
+                            {/* STEP 1: メンバー設定 */}
+                            <section className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+                                <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">1</span>
+                                        <h2 className="text-lg font-bold text-slate-800">メンバーの登録・変更</h2>
+                                    </div>
+                                    <span className="text-xs bg-slate-100 px-2.5 py-1 rounded-full text-slate-500 font-medium">
+                                        現在: <strong className="text-slate-800 font-semibold">{members.length}</strong> 人 (最大100人対応)
+                                    </span>
+                                </div>
+
+                                {/* 新規登録フォーム */}
+                                <form onSubmit={handleAddMember} className="flex gap-2 mb-4">
+                                    <div className="relative flex-1">
+                                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                            <IconUserPlus className="h-4 w-4" />
+                                        </span>
+                                        <input
+                                            type="text"
+                                            placeholder="メンバー名を追加"
+                                            value={newMemberName}
+                                            onChange={(e) => setNewMemberName(e.target.value)}
+                                            maxLength={15}
+                                            className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1 transition shrink-0"
+                                    >
+                                        <IconPlusCircle className="h-4 w-4" />
+                                        追加
+                                    </button>
+                                </form>
+
+                                {/* メンバー一覧 */}
+                                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                    {members.map(member => {
+                                        const isEditingThis = editingMemberId === member.id;
+
+                                        return (
+                                            <div 
+                                                key={member.id} 
+                                                className="flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm shadow-sm transition group"
+                                            >
+                                                {isEditingThis ? (
+                                                    <div className="flex items-center gap-1">
+                                                        <input
+                                                            type="text"
+                                                            value={editingMemberName}
+                                                            onChange={(e) => setEditingMemberName(e.target.value)}
+                                                            onKeyDown={(e) => e.key === 'Enter' && saveMemberName(member.id)}
+                                                            onBlur={() => saveMemberName(member.id)}
+                                                            autoFocus
+                                                            maxLength={15}
+                                                            className="px-1 border border-indigo-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-xs py-0.5 w-20"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => saveMemberName(member.id)}
+                                                            className="text-emerald-500 hover:text-emerald-700 p-0.5"
+                                                        >
+                                                            <IconCheck className="h-3.5 w-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <span className="font-medium">{member.name}</span>
+                                                        <div className="flex items-center opacity-40 group-hover:opacity-100 transition pl-1 gap-1 border-l border-slate-100">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => startEditMember(member)}
+                                                                title="名前を変更"
+                                                                className="text-slate-500 hover:text-indigo-600 rounded p-0.5"
+                                                            >
+                                                                <IconEdit2 className="h-3 w-3" />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveMember(member.id)}
+                                                                title="このメンバーを削除"
+                                                                className="text-slate-400 hover:text-red-500 rounded p-0.5"
+                                                            >
+                                                                <IconTrash2 className="h-3 w-3" />
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                    {members.length === 0 && (
+                                        <div className="text-center w-full py-6 text-slate-400">
+                                            <p className="text-xs">メンバーが登録されていません。</p>
+                                            <p className="text-[11px] text-slate-400 mt-1">追加フォームから登録するか、上部の「デモ」を読み込んでください。</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+
+                            {/* STEP 2: 支出の入力（ここが編集時に切り替わります） */}
+                            <section id="expense-form-section" className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100 transition-all duration-300">
+                                <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">2</span>
+                                        <h2 className="text-lg font-bold text-slate-800">
+                                            {editingExpenseId ? '⚡ 支出を編集・微調整中' : '支出・立て替えの追加'}
+                                        </h2>
+                                    </div>
+                                    {editingExpenseId && (
+                                        <span className="text-[11px] bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold">
+                                            編集モード
+                                        </span>
+                                    )}
+                                </div>
+
+                                {members.length < 2 ? (
+                                    <div className="p-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-center">
+                                        <IconUsers className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                                        <p className="text-sm text-slate-500 font-medium">まずは「ステップ1」でメンバーを2人以上登録してください。</p>
+                                    </div>
+                                ) : (
+                                    <form onSubmit={handleSaveExpense} className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* 支出の内容 */}
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">支払いの内容・品目</label>
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    placeholder="例: コテージ代、BBQ食材、高速代"
+                                                    value={expenseTitle}
+                                                    onChange={(e) => setExpenseTitle(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                                />
+                                            </div>
+
+                                            {/* 金額 */}
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">金額（円）</label>
+                                                <div className="relative">
+                                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 text-sm font-semibold">
+                                                        ¥
+                                                    </span>
+                                                    <input
+                                                        type="number"
+                                                        required
+                                                        min="1"
+                                                        step="1"
+                                                        placeholder="0"
+                                                        value={expenseAmount}
+                                                        onChange={(e) => setExpenseAmount(e.target.value)}
+                                                        className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-semibold"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* 支払った人 */}
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">支払った人（立て替えた人）</label>
+                                                <select
+                                                    value={expensePayerId}
+                                                    onChange={(e) => setExpensePayerId(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-slate-200 bg-white rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                                >
+                                                    {members.map(m => (
+                                                        <option key={m.id} value={m.id}>{m.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            {/* 対象者設定 */}
+                                            <div className="flex flex-col justify-end">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                                        割り勘の対象メンバー
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={toggleSelectAllParticipants}
+                                                        className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"
+                                                    >
+                                                        {isSelectAllParticipants ? "全員解除" : "全員選択"}
+                                                    </button>
+                                                </div>
+                                                
+                                                {/* 対象メンバー選択グリッド */}
+                                                <div className="border border-slate-200 rounded-xl p-2 bg-slate-50 max-h-36 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-1">
+                                                    {members.map(m => {
+                                                        const isChecked = expenseParticipants.includes(m.id);
+                                                        return (
+                                                            <button
+                                                                key={m.id}
+                                                                type="button"
+                                                                onClick={() => toggleParticipant(m.id)}
+                                                                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs text-left transition truncate ${
+                                                                    isChecked 
+                                                                        ? 'bg-indigo-50 border border-indigo-200 text-indigo-800 font-medium' 
+                                                                        : 'bg-white border border-slate-200 text-slate-500'
+                                                                }`}
+                                                            >
+                                                                {isChecked ? (
+                                                                    <IconCheckSquare className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                                                                ) : (
+                                                                    <IconSquare className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                                                )}
+                                                                <span className="truncate">{m.name}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* ボタン群 */}
+                                        <div className="flex gap-2.5 pt-2">
+                                            {editingExpenseId ? (
+                                                <>
+                                                    <button
+                                                        type="submit"
+                                                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-1.5 shadow"
+                                                    >
+                                                        <IconSave className="h-4 w-4" />
+                                                        変更を保存する（上書き）
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={cancelEditExpense}
+                                                        className="bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-4 py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-1"
+                                                    >
+                                                        <IconX className="h-4 w-4" />
+                                                        キャンセル
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    type="submit"
+                                                    className="w-full bg-slate-950 hover:bg-slate-900 text-white font-semibold py-2.5 rounded-xl text-sm transition flex items-center justify-center gap-1.5 shadow-sm"
+                                                >
+                                                    <IconPlusCircle className="h-4 w-4 text-emerald-400" />
+                                                    この支払いを追加する
+                                                </button>
+                                            )}
+                                        </div>
+                                    </form>
+                                )}
+                            </section>
+
+                            {/* 登録された支出リスト */}
+                            <section className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex-1">
+                                <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                        <IconFileText className="h-5 w-5 text-indigo-600" />
+                                        登録された支出一覧
+                                    </h2>
+                                    <span className="text-xs font-semibold bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full border border-emerald-100">
+                                        合計: {calculations.totalExpense.toLocaleString()} 円
+                                    </span>
+                                </div>
+
+                                <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+                                    {expenses.map(exp => {
+                                        const payer = members.find(m => m.id === exp.payerId);
+                                        const participantNames = exp.participants
+                                            .map(pId => members.find(m => m.id === pId)?.name)
+                                            .filter(Boolean)
+                                            .join('、');
+                                        
+                                        const isBeingEdited = editingExpenseId === exp.id;
+
+                                        return (
+                                            <div 
+                                                key={exp.id} 
+                                                className={`border rounded-xl p-4 transition shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-3 ${
+                                                    isBeingEdited 
+                                                        ? 'border-indigo-400 bg-indigo-50/20 ring-1 ring-indigo-400' 
+                                                        : 'border-slate-100 bg-white hover:bg-slate-50 hover:border-slate-200'
+                                                }`}
+                                            >
+                                                <div className="space-y-1 flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-bold text-slate-800 text-sm md:text-base">{exp.title}</span>
+                                                        <span className="bg-indigo-50 border border-indigo-100 text-indigo-700 text-[10px] md:text-xs font-semibold px-2 py-0.5 rounded shrink-0">
+                                                            {payer ? payer.name : '不明'} が立替
+                                                        </span>
+                                                        {isBeingEdited && (
+                                                            <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-1.5 py-0.2 rounded">
+                                                                フォームで編集中
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    <div className="text-xs text-slate-400 flex items-center gap-1">
+                                                        <IconUsers className="h-3 w-3 shrink-0" />
+                                                        <span className="truncate w-full max-w-full">
+                                                            対象 ({exp.participants.length}人): {participantNames || 'なし'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center justify-between w-full md:w-auto gap-3 self-stretch md:self-auto border-t md:border-t-0 pt-2 md:pt-0 border-slate-100">
+                                                    <span className="font-black text-slate-900 text-base md:text-lg mr-2">
+                                                        ¥ {exp.amount.toLocaleString()}
+                                                    </span>
+                                                    
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <button
+                                                            onClick={() => startEditExpense(exp)}
+                                                            className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition"
+                                                            title="この支出を編集"
+                                                        >
+                                                            <IconEdit2 className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleRemoveExpense(exp.id)}
+                                                            className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                                            title="この支出を削除"
+                                                        >
+                                                            <IconTrash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+
+                                    {expenses.length === 0 && (
+                                        <div className="text-center py-12 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                                            <div className="text-slate-300 mb-2">💸</div>
+                                            <p className="text-sm text-slate-500 font-medium">登録された支出はありません</p>
+                                            <p className="text-xs text-slate-400 mt-1">支出を追加するか、「デモ」を押してください。</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+
+                        </div>
+
+                        {/* 右側：可視化と送金ルート */}
+                        <div className="lg:col-span-5 flex flex-col gap-6 md:gap-8">
+                            
+                            {/* STEP 3: 計算結果の可視化 */}
+                            <section className="bg-white p-5 md:p-6 rounded-2xl shadow-lg border border-slate-100 ring-2 ring-indigo-600/5">
+                                <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
+                                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold">3</span>
+                                    <h2 className="text-lg font-bold text-slate-800">収支バランス・可視化</h2>
+                                </div>
+
+                                {members.length < 2 ? (
+                                    <div className="py-12 text-center">
+                                        <IconUsers className="h-10 w-10 text-slate-300 mx-auto mb-2" />
+                                        <p className="text-sm text-slate-500 font-bold">メンバー登録を2名以上にしてください</p>
+                                        <p className="text-xs text-slate-400 mt-1">自動で清算ルートと個別収支が計算されます。</p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* 個人の収支プログレスバー */}
+                                        <div className="space-y-4 mb-6">
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">各メンバーの現状と差額</h3>
+                                            
+                                            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                                                {calculations.memberBalances.map(mb => {
+                                                    const isCreditor = mb.balance > 0;
+                                                    const isDebtor = mb.balance < 0;
+                                                    const absBalance = Math.abs(mb.balance);
+                                                    
+                                                    const maxAbsBalance = Math.max(...calculations.memberBalances.map(x => Math.abs(x.balance)), 1) || 1;
+                                                    const barWidth = `${Math.min((absBalance / maxAbsBalance) * 100, 100)}%`;
+
+                                                    return (
+                                                        <div key={mb.id} className="space-y-1.5 p-3 rounded-xl hover:bg-slate-50 transition border border-slate-100/50 bg-white shadow-sm">
+                                                            <div className="flex justify-between items-center">
+                                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                                    <span className="font-bold text-slate-800 text-sm truncate">{mb.name}</span>
+                                                                    <span className="text-[10px] text-slate-400 shrink-0">
+                                                                        (払: ¥{mb.paid.toLocaleString()} / 負: ¥{Math.round(mb.share).toLocaleString()})
+                                                                    </span>
+                                                                </div>
+                                                                
+                                                                <div className={`text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                                                                    isCreditor 
+                                                                        ? 'bg-emerald-50 text-emerald-700' 
+                                                                        : 'isDebtor' 
+                                                                            ? 'bg-rose-50 text-rose-600' 
+                                                                            : 'bg-slate-100 text-slate-500'
+                                                                }`}>
+                                                                    {isCreditor && `+ ¥${absBalance.toLocaleString()}`}
+                                                                    {isDebtor && `- ¥${absBalance.toLocaleString()}`}
+                                                                    {!isCreditor && !isDebtor && '清算完了'}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* 視覚的インジケーターバー */}
+                                                            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden flex">
+                                                                {isCreditor ? (
+                                                                    <div className="flex justify-start w-full">
+                                                                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: barWidth }}></div>
+                                                                    </div>
+                                                                ) : isDebtor ? (
+                                                                    <div className="flex justify-end w-full">
+                                                                        <div className="h-full bg-rose-500 rounded-full transition-all duration-500" style={{ width: barWidth }}></div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="w-full h-full bg-slate-200"></div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* 送金おすすめ手順 */}
+                                        <div className="border-t border-slate-100 pt-5">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                                    <IconAward className="h-4.5 w-4.5 text-indigo-600" />
+                                                    おすすめの精算送金ルート
+                                                </h3>
+                                                <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md font-semibold">
+                                                    送金回数: {calculations.transactions.length}回
+                                                </span>
+                                            </div>
+
+                                            {calculations.transactions.length > 0 ? (
+                                                <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                                                    {calculations.transactions.map((t, idx) => (
+                                                        <div 
+                                                            key={idx} 
+                                                            className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3.5 flex items-center justify-between gap-2 shadow-sm relative overflow-hidden"
+                                                        >
+                                                            <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-indigo-50/30 to-transparent pointer-events-none" />
+                                                            
+                                                            <div className="flex items-center gap-2 z-10 flex-1 min-w-0">
+                                                                <div className="bg-rose-100 text-rose-700 w-7 h-7 rounded-full flex items-center justify-center font-black text-[10px] shrink-0" title="支払う人">
+                                                                    出
+                                                                </div>
+                                                                <span className="font-bold text-slate-800 text-sm truncate">{t.from}</span>
+                                                                
+                                                                <IconArrowRight className="h-4 w-4 text-indigo-400 shrink-0 mx-1" />
+                                                                
+                                                                <div className="bg-emerald-100 text-emerald-700 w-7 h-7 rounded-full flex items-center justify-center font-black text-[10px] shrink-0" title="受け取る人">
+                                                                    受
+                                                                </div>
+                                                                <span className="font-bold text-slate-800 text-sm truncate">{t.to}</span>
+                                                            </div>
+
+                                                            <div className="text-right shrink-0 z-10">
+                                                                <span className="block text-[10px] text-slate-400 font-semibold">送金額</span>
+                                                                <span className="text-sm md:text-base font-black text-indigo-700">
+                                                                    ¥{t.amount.toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-8 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
+                                                    <p className="text-sm text-slate-500 font-semibold">💰 送金の必要はありません</p>
+                                                    <p className="text-xs text-slate-400 mt-1">登録された支出がないか、全員が完全に清算済みです。</p>
+                                                </div>
+                                            )}
+
+                                            {/* 結果のコピーボタン */}
+                                            {calculations.transactions.length > 0 && (
+                                                <button
+                                                    onClick={copyResultsToClipboard}
+                                                    className={`w-full mt-5 font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-md ${
+                                                        copied 
+                                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+                                                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                                    }`}
+                                                >
+                                                    {copied ? (
+                                                        <>
+                                                            <IconCheck className="h-4.5 w-4.5" />
+                                                            コピーしました！そのまま送れます
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <IconCopy className="h-4.5 w-4.5" />
+                                                            結果をコピーしてLINE等に送る
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </section>
+
+                            {/* クイック統計情報 */}
+                            <section className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">統計・アドバイス</h3>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                        <span className="text-xs text-slate-400 block font-medium">1人あたりの平均負担</span>
+                                        <span className="text-base font-bold text-slate-800">
+                                            ¥ {members.length > 0 ? Math.round(calculations.totalExpense / members.length).toLocaleString() : 0}
+                                        </span>
+                                    </div>
+                                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                        <span className="text-xs text-slate-400 block font-medium">登録された支出</span>
+                                        <span className="text-base font-bold text-slate-800">
+                                            {expenses.length} 件
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 flex gap-2 items-start bg-indigo-50/40 p-3 rounded-xl border border-indigo-50 text-indigo-900/80">
+                                    <IconInfo className="h-4 w-4 shrink-0 text-indigo-500 mt-0.5" />
+                                    <div className="text-xs leading-relaxed space-y-1">
+                                        <p>💡 <strong>GitHub Pagesで公開中！</strong></p>
+                                        <p>このページをお気に入り登録しておくと、旅行や飲み会の最中でもいつでもスマートフォンから割り勘の確認ができます。</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                        </div>
+
+                    </main>
+                </div>
+            );
+        }
+
+        // React18 マウント
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
