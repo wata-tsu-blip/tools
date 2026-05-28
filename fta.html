@@ -207,21 +207,30 @@
       }
     };
 
-    // --- Utility Functions (ホイスティング問題防止のためfunction宣言に変更) ---
+    // --- Utility Functions ---
     function generateId() {
       return Math.random().toString(36).substring(2, 11);
     }
 
     function downloadCSV(nodes, topEventText) {
-      const header = "ID,親ID,要因,詳細理由,フォントサイズ,背景色,文字色,枠線色\n";
-      const rows = nodes.map(n => 
-        `"${n.id}","${n.parentId || ''}","${n.text.replace(/"/g, '""')}","${(n.reason || '').replace(/"/g, '""')}","${n.fontSize || ''}","${n.bgColor || ''}","${n.textColor || ''}","${n.borderColor || ''}"`
-      ).join("\n");
+      const header = "ID,親ID,階層分類,テキスト,詳細情報・検証内容,検証結果判定,検証結果詳細\n";
+      const rows = nodes.map(n => {
+        let typeLabel = `Factor ${n.depth}`;
+        if (n.depth === 0) typeLabel = "不具合事象";
+        if (n.depth === 6) typeLabel = "確認・検証内容";
+        if (n.depth === 7) typeLabel = "検証結果";
+        
+        const statusLabel = n.resultStatus === 'ok' ? '○' : n.resultStatus === 'ng' ? '×' : n.resultStatus === 'pending' ? '△' : '-';
+        const detailText = n.depth === 7 ? (n.resultText || '') : (n.reason || '');
+
+        return `"${n.id}","${n.parentId || ''}","${typeLabel}","${n.text.replace(/"/g, '""')}","${detailText.replace(/"/g, '""')}","${statusLabel}",""`;
+      }).join("\n");
+      
       const csv = "data:text/csv;charset=utf-8,\uFEFF" + header + rows;
       const encodedUri = encodeURI(csv);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `FTA_${topEventText || 'Analysis'}.csv`);
+      link.setAttribute("download", `FTA_Sheet_${topEventText || 'Analysis'}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -229,32 +238,32 @@
 
     const LEVEL_STYLES = {
       root: {
-        fontSize: '15px',
-        bgColor: '#0f172a',
-        textColor: '#ffffff',
-        borderColor: '#0284c7'
+        fontSize: '13px',
+        bgColor: '#f1f5f9', // 不具合事象（最左）は薄いシームレスなグレー
+        textColor: '#1e293b',
+        borderColor: '#0f172a'
       },
       level1: {
-        fontSize: '13px',
-        bgColor: '#f0f9ff',
-        textColor: '#0c4a6e',
-        borderColor: '#38bdf8'
+        fontSize: '12px',
+        bgColor: '#ffffff',
+        textColor: '#1e293b',
+        borderColor: '#1e293b'
       },
       level2: {
         fontSize: '12px',
-        bgColor: '#f8fafc',
-        textColor: '#334155',
-        borderColor: '#cbd5e1'
+        bgColor: '#ffffff',
+        textColor: '#1e293b',
+        borderColor: '#1e293b'
       }
     };
 
     const COLOR_PRESETS = [
+      { name: 'Classic (白黒)', bg: '#ffffff', text: '#1e293b', border: '#1e293b' },
       { name: 'Sky (青)', bg: '#f0f9ff', text: '#0c4a6e', border: '#38bdf8' },
       { name: 'Emerald (緑)', bg: '#ecfdf5', text: '#064e3b', border: '#34d399' },
       { name: 'Amber (橙)', bg: '#fffbeb', text: '#78350f', border: '#fbbf24' },
       { name: 'Rose (赤)', bg: '#fff1f2', text: '#881337', border: '#fb7185' },
       { name: 'Slate (濃灰)', bg: '#0f172a', text: '#ffffff', border: '#475569' },
-      { name: 'Light (明灰)', bg: '#ffffff', text: '#1e293b', border: '#cbd5e1' },
     ];
 
     const FONT_SIZES = [
@@ -305,7 +314,8 @@
             id: 'root', 
             parentId: null, 
             text: nodeText, 
-            reason: nodeReason || 'トップイベント',
+            reason: nodeReason || '',
+            depth: 0,
             ...LEVEL_STYLES.root
           });
           stack[0] = 'root';
@@ -326,6 +336,7 @@
             parentId: parentId, 
             text: nodeText, 
             reason: nodeReason,
+            depth: level,
             ...calculatedStyle
           });
           stack[level] = nodeId;
@@ -333,7 +344,77 @@
         }
       });
 
-      return nodes;
+      // --- 自動補完処理 (不具合事象 + Factor 1〜5 + 確認検証内容 + 検証結果 に確実に整列させる) ---
+      const completedNodes = [...nodes];
+      
+      const fillMissingBranches = () => {
+        let addedAny = false;
+        
+        // 葉ノードの抽出
+        const currentLeaves = completedNodes.filter(node => {
+          const hasChildren = completedNodes.some(child => child.parentId === node.id);
+          return !hasChildren;
+        });
+
+        currentLeaves.forEach(leaf => {
+          const depth = leaf.depth;
+
+          if (depth < 5) {
+            // Factor 5 (depth 5) までの深掘りが不足している場合にダミー要因を追加
+            const newId = generateId();
+            completedNodes.push({
+              id: newId,
+              parentId: leaf.id,
+              text: `(要因未設定)`,
+              reason: '',
+              depth: depth + 1,
+              ...LEVEL_STYLES.level2
+            });
+            addedAny = true;
+          } else if (depth === 5) {
+            // Factor 5 (depth 5) の右隣に「確認・検証内容」(depth 6) を自動展開
+            const newId = generateId();
+            completedNodes.push({
+              id: newId,
+              parentId: leaf.id,
+              // 親ノードにコロン区切りで検証内容が入っていればそれをセット
+              text: leaf.reason ? leaf.reason : `(確認・検証内容未設定)`,
+              reason: '',
+              depth: 6,
+              fontSize: '12px',
+              bgColor: '#ffffff',
+              textColor: '#1e293b',
+              borderColor: '#1e293b'
+            });
+            // 重複描画を防ぐため親ノードのreasonをクリア
+            leaf.reason = '';
+            addedAny = true;
+          } else if (depth === 6) {
+            // 「確認・検証内容」(depth 6) の右隣に「検証結果」(depth 7) を自動展開
+            completedNodes.push({
+              id: generateId(),
+              parentId: leaf.id,
+              text: `検証結果`,
+              reason: '',
+              depth: 7,
+              resultStatus: 'none',
+              resultText: '',
+              fontSize: '12px',
+              bgColor: '#ffffff',
+              textColor: '#1e293b',
+              borderColor: '#1e293b'
+            });
+            addedAny = true;
+          }
+        });
+
+        if (addedAny) {
+          fillMissingBranches();
+        }
+      };
+
+      fillMissingBranches();
+      return completedNodes;
     };
 
     const parseOPMLToNodes = (xmlText) => {
@@ -370,128 +451,241 @@
             parentId = 'root';
           }
 
-          let calculatedStyle = LEVEL_STYLES.level2;
-          if (index === 0) {
-            calculatedStyle = LEVEL_STYLES.root;
-          } else if (depth === 1) {
-            calculatedStyle = LEVEL_STYLES.level1;
-          }
-
           nodes.push({ 
             id: nodeId, 
             parentId, 
             text, 
             reason,
-            ...calculatedStyle
+            depth,
+            ...LEVEL_STYLES.level2
           });
         });
 
-        return nodes;
+        const completedNodes = [...nodes];
+        const fillMissingBranches = () => {
+          let addedAny = false;
+          const currentLeaves = completedNodes.filter(node => !completedNodes.some(child => child.parentId === node.id));
+          currentLeaves.forEach(leaf => {
+            const depth = leaf.depth;
+            if (depth < 5) {
+              const newId = generateId();
+              completedNodes.push({ id: newId, parentId: leaf.id, text: `(要因未設定)`, reason: '', depth: depth + 1, ...LEVEL_STYLES.level2 });
+              addedAny = true;
+            } else if (depth === 5) {
+              const newId = generateId();
+              completedNodes.push({ id: newId, parentId: leaf.id, text: leaf.reason ? leaf.reason : `(確認・検証内容未設定)`, reason: '', depth: 6, fontSize: '12px', bgColor: '#ffffff', textColor: '#1e293b', borderColor: '#1e293b' });
+              leaf.reason = '';
+              addedAny = true;
+            } else if (depth === 6) {
+              completedNodes.push({ id: generateId(), parentId: leaf.id, text: `検証結果`, reason: '', depth: 7, resultStatus: 'none', resultText: '', fontSize: '12px', bgColor: '#ffffff', textColor: '#1e293b', borderColor: '#1e293b' });
+              addedAny = true;
+            }
+          });
+          if (addedAny) fillMissingBranches();
+        };
+        fillMissingBranches();
+        return completedNodes;
       } catch (e) {
         console.error("OPMLの解析に失敗しました", e);
         return [];
       }
     };
 
-    const SAMPLE_MARKDOWN = `* インバータ評価中のSiC MOSFETモジュール短絡破壊
-  * 電気的過ストレス（EOS） : 定格を超える電圧・電流の印加
-    * ターンオフ時のサージ電圧 : 配線インダクタンスによるVdsスパイク
-    * ゲート誤点灯 : dV/dt起因のセルフターンオンによる上下アーム短絡
-  * 熱的ストレス（パワーサイクル寿命） : 接合部の繰り返し温度変化による疲労
-    * ボンディングワイヤの剥離 : AlワイヤとSiCチップの熱膨張係数差
-    * チップはんだ層のクラック : はんだ材の熱疲労による熱抵抗増大
-  * 環境・構造起因の絶縁破壊 : モジュール内部の外的な要因
-    * モールド樹脂内のボイド : 内部部分放電による絶縁劣化
-    * 結露によるトラッキング : パッケージ表面のクリーページ距離不足`;
+    // 5段階Factor対応、ゲートカット機構不具合の極めて高精細なフルスケールサンプル
+    const SAMPLE_MARKDOWN = `* ゲートカット機構の不具合（メカニカル要因）
+  * 金型カットピンの作動不良
+    * 駆動源の圧力不足・速度異常
+      * 油圧/電動シリンダーの出力低下
+        * 供給圧力設定の変動・エア混入
+          * 供給圧力の測定・変動確認 : シリンダーの供給圧力確認および作動速度の測定
+    * スライド・ピンの凝着・かじり
+      * 摺動部の潤滑不良・摩耗
+        * グリス膜の破断・局所発熱
+          * 耐熱グリスの劣化・塗布量不足 : ピン摺動部の分解清掃、摩耗・傷の有無確認
+  * カッター刃（ブレード）の異常
+    * 刃先の摩耗・チッピング
+      * 累積ショットによる金属疲労・摩耗
+        * 硬化樹脂（フィラー）による摩耗
+          * フィラー材による機械的摩耗 : 顕微鏡によるカッター刃先の欠け、摩耗量測定
+    * 取り付け精度不良
+      * アライメントのズレ
+        * 固定ボルトの緩み・ガタツキ
+          * 締め付けトルクの不足 : カッター刃取り付け時のトルク管理確認、隙間ゲージでの確認
+  * ゲートプッシュの異常
+    * プッシュ端面の摩耗・変形
+      * カッターとの繰り返し衝突
+        * 過度な型締め力による変形
+          * 型締め圧力過多による潰れ : ゲートプッシュ端面のダレ・カエリの有無確認`;
 
-    const PROMPT_TEMPLATE = `以下は、パワー半導体や電子機器の故障解析におけるFTA（Fault Tree Analysis）の条件です。
-論理的かつ網羅的に、故障要因を5段階の階層まで深く掘り下げて分析し、指定 of Markdown形式で出力してください。
+    const PROMPT_TEMPLATE = `以下は、品質工学・信頼性故障解析におけるFETA(Fault Event & Testing Analysis)シートの構造条件です。
+指示された故障事象を、Factor 5 (合計5段階の要因展開) まで徹底的に深く論理分析し、指定のMarkdown形式で出力してください。
 
-【故障事象（トップイベント）】
+【不具合事象（トップイベント）】
 「ここに解析したい事象を入力してください（例：モータ駆動用インバータ内のIGBT短絡破壊）」
 
 【出力ルール】
-1. 半角スペース2個のインデントを下げていくことで、階層関係（最大5階層）を表現してください。
-2. 各項目の書式は、必ず「* [要因タイトル] : [詳細や分析のヒント]」という構造にしてください。
-3. ルート（最上位）は必ず1行のみとしてください。
+1. 半角スペース2個のインデントを下げていくことで、階層関係（最大6階層）を表現してください。
+2. 階層定義：
+   - 第1階層 (インデントなし)：不具合事象（トップイベント名）
+   - 第2階層 (インデント2個)：Factor 1（大分類要因）
+   - 第3階層 (インデント4個)：Factor 2（中分類要因）
+   - 第4階層 (インデント6個)：Factor 3（小分類要因）
+   - 第5階層 (インデント8個)：Factor 4（詳細要因）
+   - 第6階層 (インデント10個)：Factor 5（根本要因）
+3. 各項目の書式は、必ず「* [要因タイトル]」としてください。
+4. 第6階層（Factor 5）のみ、必ず「* [要因タイトル] : [確認・検証内容]」という書式にしてください。コロン（:）の右側には、その原因を究明・実証するための確認試験・分析・検証方法を記述してください。
 
 【出力イメージ】
-* [トップイベント名]
-  * [大項目レベル要因] : [大項目の解説]
-    * [中項目レベル要因] : [中項目の解説]
-      * [小項目レベル要因] : [小項目の解説]
-        * [根本要因レベル（4層目）] : [解説]
-          * [最深部原因レベル（5層目）] : [具体的なメカニズムや対策]`;
+* [ゲートカット機構の不具合（メカニカル要因）]
+  * [金型カットピンの作動不良]
+    * [駆動源 of 圧力不足・速度異常]
+      * [油圧/電動シリンダーの出力低下]
+        * [供給圧力設定の変動・エア混入]
+          * [供給圧力の測定・変動確認] : [シリンダーの供給圧力確認および作動速度の測定]`;
 
     // --- Components ---
-    const TreeNode = ({ node, nodes, onAdd, onEdit, onDelete }) => {
+    const TreeNode = ({ node, nodes, onAdd, onEdit, onDelete, updateNodeResultText, updateNodeResultStatus }) => {
       const children = nodes.filter(n => n.parentId === node.id);
       const isRoot = node.parentId === null;
+
+      // 階層に基づく厳密なカラム幅計算（要因=240px、確認・検証、検証結果=320px）
+      const cardWidthNum = node.depth === 6 || node.depth === 7 ? 320 : 240;
 
       const nodeStyle = {
         backgroundColor: node.bgColor || '#ffffff',
         color: node.textColor || '#1e293b',
-        borderColor: node.borderColor || '#cbd5e1',
-        fontSize: node.fontSize || '13px',
-        height: 'auto',
+        borderColor: node.borderColor || '#000000',
+        fontSize: node.fontSize || '12px',
+        width: `${cardWidthNum}px`,
         minHeight: '80px',
       };
 
       const reasonColor = node.textColor === '#ffffff' ? 'rgba(255, 255, 255, 0.8)' : '#475569';
 
-      return (
-        <div className="flex items-center">
-          <div className={`relative group shrink-0 flex items-center ${!isRoot ? 'ml-8' : ''}`}>
-            {!isRoot && <div className="absolute top-1/2 -left-8 w-8 h-px bg-slate-400"></div>}
-            <div 
-              style={nodeStyle}
-              className={`
-                node-card relative p-4 rounded-xl border-2 w-64 shadow-sm transition-all duration-200 flex flex-col justify-between
-                ${isRoot ? 'shadow-md' : 'hover:shadow-md'}
-              `}
-            >
-              <div className="w-full">
-                <h3 className="font-bold leading-snug break-words text-left">{node.text}</h3>
-                {node.reason && (
-                  <p 
-                    style={{ color: reasonColor }}
-                    className="text-[11px] mt-2 leading-relaxed text-left break-words whitespace-pre-wrap border-t border-slate-100/10 pt-1.5"
-                  >
-                    {node.reason}
-                  </p>
-                )}
-              </div>
+      // --- 検証結果 (最右端 depth === 7) のレンダリング ---
+      if (node.depth === 7) {
+        const statusColors = {
+          none: { bg: 'bg-white', text: 'text-slate-500', label: '-', selectBg: 'bg-slate-100' },
+          ok: { bg: 'bg-yellow-400', text: 'text-slate-900 font-extrabold', label: '○', selectBg: 'bg-yellow-300' },
+          ng: { bg: 'bg-rose-500', text: 'text-white font-extrabold', label: '×', selectBg: 'bg-rose-600' },
+          pending: { bg: 'bg-amber-400', text: 'text-slate-900 font-extrabold', label: '△', selectBg: 'bg-amber-300' },
+        };
 
-              {/* Action Buttons on Hover */}
-              <div className="absolute -top-4 -right-2 hidden group-hover:flex space-x-1 bg-white p-1 rounded-full shadow-lg border border-slate-200 z-10">
-                <button onClick={() => onAdd(node)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-full transition-colors" title="下位要因を追加">
-                  <Plus size={14}/>
-                </button>
-                <button onClick={() => onEdit(node)} className="p-1.5 text-amber-600 hover:bg-amber-100 rounded-full transition-colors" title="スタイルと内容を編集">
-                  <Edit2 size={14}/>
-                </button>
-                {!isRoot && (
-                  <button onClick={() => onDelete(node.id)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-full transition-colors" title="削除">
-                    <Trash2 size={14}/>
-                  </button>
-                )}
+        const currentStatus = node.resultStatus || 'none';
+        const colors = statusColors[currentStatus] || statusColors.none;
+
+        return (
+          <div className="flex items-center shrink-0">
+            {/* 左側横接続線 (24px) */}
+            <div className="w-[24px] h-px bg-slate-950 shrink-0"></div>
+
+            {/* 検証結果Box */}
+            <div 
+              style={{ width: '320px', minHeight: '80px' }}
+              className="node-card relative p-3 rounded-none border border-slate-950 bg-white shadow-sm flex items-stretch gap-2 shrink-0"
+            >
+              {/* テキスト入力欄 */}
+              <textarea
+                value={node.resultText || ''}
+                onChange={(e) => updateNodeResultText(node.id, e.target.value)}
+                placeholder="検証結果・判定詳細を入力..."
+                className="flex-1 p-1 text-xs border border-slate-200 rounded outline-none resize-none h-full min-h-[56px] focus:ring-1 focus:ring-sky-500 font-sans"
+              />
+
+              {/* ○×△トグルトリガー */}
+              <div className={`w-12 flex flex-col items-center justify-center rounded border border-slate-400 relative overflow-hidden shrink-0 ${colors.bg}`}>
+                <select
+                  value={currentStatus}
+                  onChange={(e) => updateNodeResultStatus(node.id, e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  title="判定を選択"
+                >
+                  <option value="none">未判定 (-)</option>
+                  <option value="ok">○ 合格</option>
+                  <option value="ng">× 不合格</option>
+                  <option value="pending">△ 保留</option>
+                </select>
+                <span className={`text-2xl ${colors.text}`}>{colors.label}</span>
               </div>
             </div>
           </div>
+        );
+      }
 
-          {/* Children Render recursion */}
+      return (
+        <div className="flex items-center shrink-0">
+          {/* 1. 左側横接続線 (ルート以外、一律24px) */}
+          {!isRoot && (
+            <div className="w-[24px] h-px bg-slate-950 shrink-0"></div>
+          )}
+
+          {/* 2. 要因・検証内容カード本体 */}
+          <div 
+            style={nodeStyle}
+            className={`
+              node-card relative p-3 rounded-none border border-slate-950 shadow-sm transition-all duration-200 flex flex-col justify-center shrink-0
+              ${isRoot ? 'font-bold' : ''}
+            `}
+          >
+            <div className="w-full">
+              <h3 className="font-bold leading-snug break-words text-left">{node.text}</h3>
+              {node.reason && (
+                <p 
+                  style={{ color: reasonColor }}
+                  className="text-[10px] mt-1 leading-relaxed text-left break-words whitespace-pre-wrap border-t border-slate-200 pt-1"
+                >
+                  {node.reason}
+                </p>
+              )}
+            </div>
+
+            {/* ホバーアクションツールバー */}
+            <div className="absolute -top-4 -right-2 hidden group-hover:flex space-x-1 bg-white p-1 rounded-full shadow-lg border border-slate-200 z-10">
+              <button onClick={() => onAdd(node)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-full transition-colors" title="下位要因を追加">
+                <Plus size={14}/>
+              </button>
+              <button onClick={() => onEdit(node)} className="p-1.5 text-amber-600 hover:bg-amber-100 rounded-full transition-colors" title="スタイルと内容を編集">
+                <Edit2 size={14}/>
+              </button>
+              {!isRoot && (
+                <button onClick={() => onDelete(node.id)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-full transition-colors" title="削除">
+                  <Trash2 size={14}/>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 3. 右側横接続線 (子ノードがいる場合のみ、一律24px) */}
           {children.length > 0 && (
-            <div className="flex items-center">
-              <div className="w-8 h-px bg-slate-400"></div>
-              <div className="flex flex-col relative py-2">
-                {children.map((child, idx) => (
-                  <div key={child.id} className="relative flex items-center py-2">
-                    <div className="absolute left-0 w-px bg-slate-400" style={{ top: idx === 0 ? '50%' : '0', bottom: idx === children.length - 1 ? '50%' : '0' }}></div>
-                    <div className="absolute left-0 top-1/2 w-8 h-px bg-slate-400"></div>
-                    <TreeNode node={child} nodes={nodes} onAdd={onAdd} onEdit={onEdit} onDelete={onDelete} />
-                  </div>
-                ))}
-              </div>
+            <div className="w-[24px] h-px bg-slate-950 shrink-0"></div>
+          )}
+
+          {/* 4. 子ノードグループコンテナ */}
+          {children.length > 0 && (
+            <div className="flex flex-col relative shrink-0">
+              {children.map((child, idx) => (
+                <div key={child.id} className="relative flex items-center shrink-0 py-2">
+                  {/* 子要素が複数存在する場合に、確実に1ピクセルの隙間もなく直角に結ばれる縦線 */}
+                  {children.length > 1 && (
+                    <div 
+                      className="absolute left-0 w-px bg-slate-950" 
+                      style={{ 
+                        top: idx === 0 ? '50%' : '0px', 
+                        bottom: idx === children.length - 1 ? '50%' : '0px' 
+                      }}
+                    ></div>
+                  )}
+                  <TreeNode 
+                    node={child} 
+                    nodes={nodes} 
+                    onAdd={onAdd} 
+                    onEdit={onEdit} 
+                    onDelete={onDelete} 
+                    updateNodeResultText={updateNodeResultText}
+                    updateNodeResultStatus={updateNodeResultStatus}
+                  />
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -502,7 +696,7 @@
       const [text, setText] = useState('');
       const [reason, setReason] = useState('');
       
-      const [fontSize, setFontSize] = useState('13px');
+      const [fontSize, setFontSize] = useState('12px');
       const [bgColor, setBgColor] = useState('#ffffff');
       const [textColor, setTextColor] = useState('#1e293b');
       const [borderColor, setBorderColor] = useState('#cbd5e1');
@@ -511,7 +705,7 @@
         if (isOpen) { 
           setText(initialData?.text || ''); 
           setReason(initialData?.reason || ''); 
-          setFontSize(initialData?.fontSize || '13px');
+          setFontSize(initialData?.fontSize || '12px');
           setBgColor(initialData?.bgColor || '#ffffff');
           setTextColor(initialData?.textColor || '#1e293b');
           setBorderColor(initialData?.borderColor || '#cbd5e1');
@@ -536,7 +730,7 @@
             
             <div className="p-4 flex flex-col gap-4 overflow-y-auto">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">要因名</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">要因名 / 検証方法</label>
                 <input type="text" value={text} onChange={e => setText(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-sky-500" />
               </div>
               <div>
@@ -615,8 +809,8 @@
             <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-center">
               <div className="text-xs text-slate-400 mr-3">プレビュー：</div>
               <div 
-                style={{ backgroundColor: bgColor, color: textColor, borderColor: borderColor, fontSize: fontSize, height: 'auto', minHeight: '80px' }}
-                className="p-3 rounded-lg border-2 w-52 shadow-sm text-center font-bold flex flex-col justify-center"
+                style={{ backgroundColor: bgColor, color: textColor, borderColor: borderColor, fontSize: fontSize, minHeight: '80px' }}
+                className="p-3 rounded border w-52 shadow-sm text-center font-bold flex flex-col justify-center"
               >
                 <div>{text || 'サンプルテキスト'}</div>
                 {reason && <div className="text-[10px] mt-1 opacity-80 font-normal">{reason}</div>}
@@ -642,9 +836,9 @@
       const [nodes, setNodes] = useState([]);
       const [rawText, setRawText] = useState('');
       const [scale, setScale] = useState(1);
-      const [pan, setPan] = useState({ x: 50, y: 80 });
+      const [pan, setPan] = useState({ x: 50, y: 120 });
       const [isDragging, setIsDragging] = useState(false);
-      const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+      const [dragStart, setDragStart] = useState({ x: e => 0, y: e => 0 });
       const [modalState, setModalState] = useState({ isOpen: false, type: 'add', node: null });
       const [copied, setCopied] = useState(false);
       const exportTargetRef = useRef(null);
@@ -663,11 +857,11 @@
         } else {
           setNodes(parseMarkdownToNodes(rawText));
         }
-        setPan({ x: 50, y: 100 });
+        setPan({ x: 50, y: 120 });
       };
 
       const handleMouseDown = (e) => {
-        if (e.target.closest('.node-card') || e.target.closest('button') || e.target.closest('textarea') || e.target.closest('input')) return;
+        if (e.target.closest('.node-card') || e.target.closest('button') || e.target.closest('textarea') || e.target.closest('input') || e.target.closest('select')) return;
         setIsDragging(true);
         setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
       };
@@ -678,12 +872,17 @@
 
       const handleMouseUp = () => setIsDragging(false);
 
-      const handleAddNode = (parentNode) => setModalState({ 
-        isOpen: true, 
-        type: 'add', 
-        node: parentNode, 
-        data: { text: '', reason: '', fontSize: '12px', bgColor: '#ffffff', textColor: '#1e293b', borderColor: '#cbd5e1' } 
-      });
+      const handleAddNode = (parentNode) => {
+        const nextDepth = parentNode.depth + 1;
+        // depth 6(確認検証内容) や depth 7(検証結果) 以上は追加不可（固定グリッドを維持するため）
+        if (nextDepth > 6) return;
+        setModalState({ 
+          isOpen: true, 
+          type: 'add', 
+          node: parentNode, 
+          data: { text: '', reason: '', fontSize: '12px', bgColor: '#ffffff', textColor: '#1e293b', borderColor: '#1e293b' } 
+        });
+      };
 
       const handleEditNode = (node) => setModalState({ isOpen: true, type: 'edit', node: node, data: { ...node } });
 
@@ -699,18 +898,51 @@
         });
       };
 
+      const updateNodeResultText = (id, text) => {
+        setNodes(prev => prev.map(n => n.id === id ? { ...n, resultText: text } : n));
+      };
+
+      const updateNodeResultStatus = (id, status) => {
+        setNodes(prev => prev.map(n => n.id === id ? { ...n, resultStatus: status } : n));
+      };
+
       const saveModalData = (data) => {
         if (modalState.type === 'add') {
-          setNodes(prev => [...prev, { 
-            id: generateId(), 
-            parentId: modalState.node.id, 
+          const parentNode = modalState.node;
+          const newDepth = parentNode.depth + 1;
+          const newId = generateId();
+
+          const newNode = { 
+            id: newId, 
+            parentId: parentNode.id, 
             text: data.text, 
             reason: data.reason,
+            depth: newDepth,
             fontSize: data.fontSize,
             bgColor: data.bgColor,
             textColor: data.textColor,
             borderColor: data.borderColor
-          }]);
+          };
+
+          const subNodes = [];
+          if (newDepth === 6) {
+            // もし追加したのが「確認・検証内容」(depth 6)であれば、検証結果(depth 7)を右端に自動追随配置
+            subNodes.push({
+              id: generateId(),
+              parentId: newId,
+              text: '検証結果',
+              reason: '',
+              depth: 7,
+              resultStatus: 'none',
+              resultText: '',
+              fontSize: '12px',
+              bgColor: '#ffffff',
+              textColor: '#1e293b',
+              borderColor: '#cbd5e1'
+            });
+          }
+
+          setNodes(prev => [...prev, newNode, ...subNodes]);
         } else {
           setNodes(prev => prev.map(n => n.id === modalState.node.id ? { 
             ...n, 
@@ -744,7 +976,7 @@
           exportTargetRef.current.style.transform = origTransform;
 
           const link = document.createElement('a');
-          link.download = `FTA_Tree_${rootNode?.text || 'Export'}.png`;
+          link.download = `FTA_FETA_Sheet_${rootNode?.text || 'Export'}.png`;
           link.href = canvas.toDataURL('image/png');
           link.click();
         } catch (err) { 
@@ -791,7 +1023,7 @@
                       {copied ? 'コピー完了' : 'テンプレートをコピー'}
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                  <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
                     下のテキストをコピーしてGeminiなどの対話型AIに貼り付けるだけで、このシステムにダイレクトに読み込み可能な5段階の高品質なFTAをAIが作成してくれます。
                   </p>
                   <pre className="text-[10px] bg-black/40 p-2.5 rounded border border-slate-800 font-mono text-slate-300 leading-normal max-h-32 overflow-y-auto whitespace-pre-wrap select-all">
@@ -831,7 +1063,7 @@
 
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-600 space-y-2">
                   <h4 className="font-bold text-slate-700 flex items-center gap-1"><Info size={14} className="text-sky-600 inline" /> ビジュアルの調整について</h4>
-                  <p className="leading-relaxed text-slate-500">
+                  <p className="leading-relaxed text-slate-500 font-sans">
                     カードにマウスカーソルを合わせると表示される <b><Edit2 size={12} className="inline text-amber-500 mx-0.5" /> 編集</b> アイコンから、個々の要因カードのフォントサイズ・カラーパレット（テーマ別）などをいつでも自由に変更できます。
                   </p>
                 </div>
@@ -862,7 +1094,7 @@
 
               {nodes.length === 0 && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <p className="text-slate-400 text-sm">テキストを入力して変換ボタンを押してください</p>
+                  <p className="text-slate-400 text-sm font-sans">テキストを入力して変換ボタンを押してください</p>
                 </div>
               )}
 
@@ -871,15 +1103,42 @@
                 className="absolute origin-top-left transition-transform duration-75"
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
               >
-                <div ref={exportTargetRef} className="inline-block p-8">
-                  {rootNode && <TreeNode node={rootNode} nodes={nodes} onAdd={handleAddNode} onEdit={handleEditNode} onDelete={handleDeleteNode} />}
+                {/* ズーム・パン・キャプチャの連動コンテナ */}
+                <div ref={exportTargetRef} className="inline-block p-10 bg-slate-50/50 rounded-2xl">
+                  
+                  {/* Grid Column Headers (不具合事象、要因Factor 1〜5、検証、結果) */}
+                  {rootNode && (
+                    <div className="flex border-b-2 border-slate-900 pb-3 mb-6 font-sans font-extrabold text-xs text-slate-600 uppercase tracking-widest select-none shrink-0" style={{ width: 'fit-content' }}>
+                      <div style={{ width: '288px' }} className="pl-1">不具合事象</div>
+                      <div style={{ width: '288px' }} className="pl-1">Factor 1</div>
+                      <div style={{ width: '288px' }} className="pl-1">Factor 2</div>
+                      <div style={{ width: '288px' }} className="pl-1">Factor 3</div>
+                      <div style={{ width: '288px' }} className="pl-1">Factor 4</div>
+                      <div style={{ width: '288px' }} className="pl-1">Factor 5</div>
+                      <div style={{ width: '368px' }} className="pl-1">確認・検証内容</div>
+                      <div style={{ width: '320px' }} className="pl-1">検証結果</div>
+                    </div>
+                  )}
+
+                  {/* Root Node of the Tree */}
+                  {rootNode && (
+                    <TreeNode 
+                      node={rootNode} 
+                      nodes={nodes} 
+                      onAdd={handleAddNode} 
+                      onEdit={handleEditNode} 
+                      onDelete={handleDeleteNode} 
+                      updateNodeResultText={updateNodeResultText}
+                      updateNodeResultStatus={updateNodeResultStatus}
+                    />
+                  )}
                 </div>
               </div>
 
               {/* Zoom Navigator UI */}
               <div className="absolute bottom-6 right-6 flex flex-col bg-white rounded-xl shadow-md border border-slate-200 p-1 z-10">
                 <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="p-2 text-slate-600 hover:text-sky-600 rounded" title="ズームイン"><ZoomIn size={18} /></button>
-                <button onClick={() => { setScale(1); setPan({ x: 50, y: 80 }); }} className="p-2 text-slate-500 font-bold text-xs hover:text-sky-600" title="ズームをリセット">100%</button>
+                <button onClick={() => { setScale(1); setPan({ x: 50, y: 120 }); }} className="p-2 text-slate-500 font-bold text-xs hover:text-sky-600" title="ズームをリセット">100%</button>
                 <button onClick={() => setScale(s => Math.max(s - 0.1, 0.4))} className="p-2 text-slate-600 hover:text-sky-600 rounded" title="ズームアウト"><ZoomOut size={18} /></button>
               </div>
             </div>
