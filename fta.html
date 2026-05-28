@@ -539,9 +539,9 @@
 * [ゲートカット機構の不具合（メカニカル要因）]
   * [金型カットピンの作動不良]
     * [駆動源 of 圧力不足・速度異常]
-      * [油圧/電動シリンダーの出力低下]
-        * [供給圧力設定の変動・エア混入]
-          * [供給圧力の測定・変動確認] : [シリンダーの供給圧力確認および作動速度の測定]`;
+      * [油圧/電動シリンダー of 出力低下]
+        * [供給圧力設定 of 変動・エア混入]
+          * [供給圧力 of 測定・変動確認] : [シリンダー of 供給圧力確認および作動速度 of 測定]`;
 
     // --- Components ---
     const TreeNode = ({ node, nodes, onAdd, onEdit, onDelete, updateNodeResultText, updateNodeResultStatus }) => {
@@ -582,7 +582,7 @@
             {/* 検証結果Box */}
             <div 
               style={{ width: '320px', minHeight: '80px' }}
-              className="node-card relative p-3 rounded-none border border-slate-950 bg-white shadow-sm flex items-stretch gap-2 shrink-0"
+              className="node-card relative p-3 rounded-none border border-slate-950 bg-white shadow-sm flex items-stretch gap-2 shrink-0 animate-in fade-in zoom-in-95 duration-150"
             >
               {/* テキスト入力欄 */}
               <textarea
@@ -619,11 +619,11 @@
             <div className="w-[24px] h-px bg-slate-950 shrink-0"></div>
           )}
 
-          {/* 2. 要因・検証内容カード本体 */}
+          {/* 2. 要因・検証内容カード本体 (グループホバーで操作ボタンを表示するため "group" クラスをここに明示) */}
           <div 
             style={nodeStyle}
             className={`
-              node-card relative p-3 rounded-none border border-slate-950 shadow-sm transition-all duration-200 flex flex-col justify-center shrink-0
+              node-card group relative p-3 rounded-none border border-slate-950 shadow-sm transition-all duration-200 flex flex-col justify-center shrink-0
               ${isRoot ? 'font-bold' : ''}
             `}
           >
@@ -639,16 +639,28 @@
               )}
             </div>
 
-            {/* ホバーアクションツールバー */}
+            {/* ホバーアクションツールバー (group-hover:flex でホバー時に必ず表示) */}
             <div className="absolute -top-4 -right-2 hidden group-hover:flex space-x-1 bg-white p-1 rounded-full shadow-lg border border-slate-200 z-10">
-              <button onClick={() => onAdd(node)} className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-full transition-colors" title="下位要因を追加">
+              <button 
+                onClick={(e) => { e.stopPropagation(); onAdd(node); }} 
+                className="p-1.5 text-emerald-600 hover:bg-emerald-100 rounded-full transition-colors" 
+                title="下位要因を追加"
+              >
                 <Plus size={14}/>
               </button>
-              <button onClick={() => onEdit(node)} className="p-1.5 text-amber-600 hover:bg-amber-100 rounded-full transition-colors" title="スタイルと内容を編集">
+              <button 
+                onClick={(e) => { e.stopPropagation(); onEdit(node); }} 
+                className="p-1.5 text-amber-600 hover:bg-amber-100 rounded-full transition-colors" 
+                title="スタイルと内容を編集"
+              >
                 <Edit2 size={14}/>
               </button>
               {!isRoot && (
-                <button onClick={() => onDelete(node.id)} className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-full transition-colors" title="削除">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); onDelete(node.id); }} 
+                  className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-full transition-colors" 
+                  title="削除"
+                >
                   <Trash2 size={14}/>
                 </button>
               )}
@@ -838,7 +850,7 @@
       const [scale, setScale] = useState(1);
       const [pan, setPan] = useState({ x: 50, y: 120 });
       const [isDragging, setIsDragging] = useState(false);
-      const [dragStart, setDragStart] = useState({ x: e => 0, y: e => 0 });
+      const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
       const [modalState, setModalState] = useState({ isOpen: false, type: 'add', node: null });
       const [copied, setCopied] = useState(false);
       const exportTargetRef = useRef(null);
@@ -880,7 +892,7 @@
           isOpen: true, 
           type: 'add', 
           node: parentNode, 
-          data: { text: '', reason: '', fontSize: '12px', bgColor: '#ffffff', textColor: '#1e293b', borderColor: '#1e293b' } 
+          data: { text: '', reason: '', fontSize: '12px', bgColor: '#ffffff', textColor: '#1e293b', borderColor: '#cbd5e1' } 
         });
       };
 
