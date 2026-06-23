@@ -12,8 +12,8 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   
-  <!-- Babel for JSX Compilation in Browser -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Babel for JSX Compilation in Browser (安定バージョンに固定) -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.3/babel.min.js" crossorigin="anonymous"></script>
   
   <!-- html2canvas for Image Export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
@@ -39,8 +39,8 @@
 <body class="h-screen w-full overflow-hidden bg-slate-50">
   <div id="root"></div>
 
-  <!-- React code compiled dynamically via Babel -->
-  <script type="text/babel">
+  <!-- data-plugins に transform-modules-umd を明示することで、Babel によるブラウザ非対応の import 文生成を完全に防止します -->
+  <script type="text/babel" data-presets="react" data-plugins="transform-modules-umd">
     const { useState, useEffect, useRef } = React;
 
     // --- Inline SVG Icons (Lucide alternatives) ---
@@ -501,7 +501,7 @@
     * スライド・ピンの凝着・かじり
       * 摺動部の潤滑不良・摩耗
         * グリス膜の破断・局所発熱
-          * 耐熱グリスの劣化・塗布量不足 : ピン摺動部の分解清掃、摩耗・傷の有無確認
+          * 耐熱グリスの劣化・塗布量不足 : ピン摺動部の分解清清潔、摩耗・傷 of 有無確認
   * カッター刃（ブレード）の異常
     * 刃先の摩耗・チッピング
       * 累積ショットによる金属疲労・摩耗
@@ -538,10 +538,10 @@
 【出力イメージ】
 * [ゲートカット機構の不具合（メカニカル要因）]
   * [金型カットピンの作動不良]
-    * [駆動源 of 圧力不足・速度異常]
-      * [油圧/電動シリンダー of 出力低下]
-        * [供給圧力設定 of 変動・エア混入]
-          * [供給圧力 of 測定・変動確認] : [シリンダー of 供給圧力確認および作動速度 of 測定]`;
+    * [駆動源の圧力不足・速度異常]
+      * [油圧/電動シリンダーの出力低下]
+        * [供給圧力設定の変動・エア混入]
+          * [供給圧力の測定・変動確認] : [シリンダーの供給圧力確認および作動速度の測定]`;
 
     // --- Components ---
     const TreeNode = ({ node, nodes, onAdd, onEdit, onDelete, updateNodeResultText, updateNodeResultStatus }) => {
